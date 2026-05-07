@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:build.nvidia.com)",
+      "Bash(curl -s -X POST \"https://build.nvidia.com/api/v1/model/nvidia/audio2face-3d/describe\" -H \"Authorization: Bearer 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\")",
+      "Bash(curl *)"
+    ]
+  }
+}

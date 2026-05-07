@@ -1,0 +1,5 @@
+node_modules/
+models/
+*.log
+.env.local
+.env

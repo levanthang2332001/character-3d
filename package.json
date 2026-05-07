@@ -1,0 +1,21 @@
+{
+  "name": "webgpu",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.35",
+    "dotenv": "^17.4.2",
+    "microsoft-cognitiveservices-speech-sdk": "^1.49.0",
+    "three": "^0.184.0",
+    "undici": "^7.25.0",
+    "ws": "^8.20.0"
+  }
+}

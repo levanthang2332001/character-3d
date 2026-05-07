@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
+    />
+    <title>Face Cap - Emotions</title>
+    <link type="text/css" rel="stylesheet" href="./script/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./node_modules/three/build/three.module.js",
+          "three/addons/": "./node_modules/three/examples/jsm/",
+          "@mediapipe/tasks-vision": "./node_modules/@mediapipe/tasks-vision/vision_bundle.mjs"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="info">
+      <a href="https://threejs.org" target="_blank" rel="noreferrer"
+        >three.js</a
+      >
+      Face Cap - Emotions
+    </div>
+
+    <aside id="controls">
+      <button type="button" class="emotion-btn" id="tracking">
+        Live Camera
+      </button>
+
+      <section id="camera-panel">
+        <div id="camera-stage">
+          <video id="camera-preview" autoplay muted playsinline></video>
+          <canvas id="camera-overlay"></canvas>
+        </div>
+        <div id="tracking-status">Camera idle</div>
+      </section>
+
+      <section>
+        <h3>Lip Sync</h3>
+        <input
+          type="text"
+          id="speak-input"
+          placeholder="Gõ tiếng Việt..."
+          value="Xin chào HoloLab"
+        />
+        <button type="button" id="speak-btn">Lip Sync</button>
+        <div id="lip-sync-status">
+          San sang lip sync tieng Viet theo cau nhap.
+        </div>
+      </section>
+
+      <section>
+        <h3>Morph Targets</h3>
+        <div id="sliders"></div>
+      </section>
+
+      <section id="ai-section">
+        <button type="button" id="ai-toggle-btn">▼ AI Assistant</button>
+        <button
+          type="button"
+          id="ai-mic-btn"
+          style="
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 5px;
+          "
+        >
+          🎤 Mic
+        </button>
+        <div id="ai-panel" style="display: block">
+          <div
+            id="chat-messages"
+            style="
+              max-height: 200px;
+              overflow-y: auto;
+              background: rgba(0, 0, 0, 0.5);
+              border-radius: 4px;
+              padding: 8px;
+              margin: 8px 0;
+            "
+          ></div>
+          <div id="ai-input-area">
+            <input
+              type="text"
+              id="ai-text-input"
+              placeholder="Type message..."
+              style="
+                width: 70%;
+                background: #222;
+                color: #fff;
+                border: 1px solid #444;
+                padding: 8px;
+                border-radius: 4px;
+                font-family: Monospace;
+                box-sizing: border-box;
+              "
+            />
+            <button
+              type="button"
+              id="ai-send-btn"
+              style="
+                background: #4caf50;
+                color: white;
+                border: none;
+                padding: 8px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                margin-left: 5px;
+              "
+            >
+              Send
+            </button>
+          </div>
+          <div
+            id="ai-status"
+            style="
+              color: #0f0;
+              font-size: 11px;
+              text-align: center;
+              padding: 5px;
+            "
+          >
+            Ready
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <div id="loading">Loading...</div>
+
+    <script type="module">
+      import {
+        initFacecap,
+        startSpeechFromText,
+        setEmotion,
+        startRandom,
+      } from "./script/facecap.js";
+      import {
+        initFaceTracking,
+        toggleFaceTracking,
+      } from "./script/face_mesh.js";
+      import { initChatGPTAssistant } from "./script/chatgpt_assistant.js";
+
+      document.querySelectorAll("[data-emotion]").forEach((button) => {
+        button.addEventListener("click", () =>
+          setEmotion(button.dataset.emotion),
+        );
+      });
+
+      document.getElementById("random")?.addEventListener("click", startRandom);
+      document
+        .getElementById("tracking")
+        ?.addEventListener("click", toggleFaceTracking);
+      document
+        .getElementById("speak-btn")
+        ?.addEventListener("click", startSpeechFromText);
+
+      initFacecap();
+      initFaceTracking();
+      initChatGPTAssistant();
+    </script>
+  </body>
+</html>
