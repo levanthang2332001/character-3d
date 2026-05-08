@@ -113,7 +113,11 @@ export function initAnimation() {
 function initSceneGraph() {
   state.scene = new THREE.Scene();
   state.scene.background = new THREE.Color(SCENE.background);
-  state.scene.fog = new THREE.Fog(SCENE.background, SCENE.fogNear, SCENE.fogFar);
+  state.scene.fog = new THREE.Fog(
+    SCENE.background,
+    SCENE.fogNear,
+    SCENE.fogFar,
+  );
 
   const cam = new THREE.PerspectiveCamera(
     CAMERA.fov,
@@ -122,9 +126,7 @@ function initSceneGraph() {
     CAMERA.far,
   );
   cam.position.fromArray(CAMERA.position);
-  cam.lookAt(
-    new THREE.Vector3().fromArray(CAMERA.lookAt),
-  );
+  cam.lookAt(new THREE.Vector3().fromArray(CAMERA.lookAt));
   state.camera = cam;
 
   addGroundPlane();
@@ -189,7 +191,11 @@ function initTimer() {
 
 function initLights() {
   const hemiCfg = LIGHT.hemi;
-  const hemi = new THREE.HemisphereLight(hemiCfg.sky, hemiCfg.ground, hemiCfg.intensity);
+  const hemi = new THREE.HemisphereLight(
+    hemiCfg.sky,
+    hemiCfg.ground,
+    hemiCfg.intensity,
+  );
   hemi.position.set(0, hemiCfg.y, 0);
   state.scene.add(hemi);
 
@@ -213,7 +219,6 @@ function initLights() {
   state.scene.add(dir.target);
 }
 
-
 function createConfiguredGltfLoader() {
   const ktx2 = new KTX2Loader();
   ktx2.setTranscoderPath(PATHS.ktx2Basis).detectSupport(state.renderer);
@@ -223,10 +228,11 @@ function createConfiguredGltfLoader() {
   return loader;
 }
 
-
 function clipWithFallbackName(clip, fallbackName) {
   if (!clip) {
-    throw new Error("Missing animation clip (file may be empty or incompatible).");
+    throw new Error(
+      "Missing animation clip (file may be empty or incompatible).",
+    );
   }
   const c = clip.clone();
   c.name = !c.name || c.name === "mixamo.com" ? fallbackName : c.name;
@@ -234,7 +240,9 @@ function clipWithFallbackName(clip, fallbackName) {
 }
 
 function stripRootHipsMotion(clip) {
-  const tracks = clip.tracks.filter((track) => !isMixamoRootHipsPositionTrack(track.name));
+  const tracks = clip.tracks.filter(
+    (track) => !isMixamoRootHipsPositionTrack(track.name),
+  );
   return new THREE.AnimationClip(clip.name, clip.duration, tracks);
 }
 
@@ -244,11 +252,17 @@ function isMixamoRootHipsPositionTrack(trackName) {
 }
 
 function buildClipsFromAssets(idleGltf, walkGltf, optionalRunGltf) {
-  const idleClip = stripRootHipsMotion(clipWithFallbackName(idleGltf.animations[0], "Idle"));
-  const walkClip = stripRootHipsMotion(clipWithFallbackName(walkGltf.animations[0], "Walk"));
+  const idleClip = stripRootHipsMotion(
+    clipWithFallbackName(idleGltf.animations[0], "Idle"),
+  );
+  const walkClip = stripRootHipsMotion(
+    clipWithFallbackName(walkGltf.animations[0], "Walk"),
+  );
 
   const runClip = optionalRunGltf?.animations?.[0]
-    ? stripRootHipsMotion(clipWithFallbackName(optionalRunGltf.animations[0], "Run"))
+    ? stripRootHipsMotion(
+        clipWithFallbackName(optionalRunGltf.animations[0], "Run"),
+      )
     : clipWithFallbackName(walkClip.clone(), "Run");
 
   state.runUsesWalkClip = !optionalRunGltf;
@@ -270,7 +284,7 @@ function startAssetLoad() {
         gltfLoader.loadAsync(PATHS.idle),
         gltfLoader.loadAsync(PATHS.walk),
       ];
-      
+
       if (PATHS.runGlbOptional) {
         loads.push(gltfLoader.loadAsync(PATHS.runGlbOptional));
       }
@@ -286,7 +300,11 @@ function startAssetLoad() {
       state.mixer = new THREE.AnimationMixer(state.model);
       createGuiPanel();
 
-      const { idleClip, walkClip, runClip } = buildClipsFromAssets(idleGltf, walkGltf, optionalRunGltf);
+      const { idleClip, walkClip, runClip } = buildClipsFromAssets(
+        idleGltf,
+        walkGltf,
+        optionalRunGltf,
+      );
 
       state.idleAction = state.mixer.clipAction(idleClip);
       state.walkAction = state.mixer.clipAction(walkClip);
@@ -370,7 +388,8 @@ function onWindowResize() {
 
 function setWeight(action, weight) {
   action.enabled = true;
-  const scale = state.runUsesWalkClip && action === state.runAction ? RUN_SPEED_VS_WALK : 1;
+  const scale =
+    state.runUsesWalkClip && action === state.runAction ? RUN_SPEED_VS_WALK : 1;
   action.setEffectiveTimeScale(scale);
   action.setEffectiveWeight(weight);
 }
@@ -388,7 +407,9 @@ function prepareCrossFade(startAction, endAction, defaultDuration) {
 }
 
 function resolveCrossFadeDuration(defaultDuration) {
-  return state.settings["use default duration"] ? defaultDuration : state.settings["set custom duration"];
+  return state.settings["use default duration"]
+    ? defaultDuration
+    : state.settings["set custom duration"];
 }
 
 function executeCrossFade(startAction, endAction, duration) {
@@ -530,7 +551,9 @@ function createGuiPanel() {
 
   bindWeightSliders(folderWeights);
 
-  folderSpeed.add(s, "modify time scale", 0.0, 1.5, 0.01).onChange(modifyTimeScale);
+  folderSpeed
+    .add(s, "modify time scale", 0.0, 1.5, 0.01)
+    .onChange(modifyTimeScale);
 
   [
     folderVisibility,
@@ -545,13 +568,22 @@ function createGuiPanel() {
 function bindWeightSliders(folderWeights) {
   const s = state.settings;
 
-  folderWeights.add(s, "modify idle weight", 0.0, 1.0, 0.01).listen().onChange((w) => {
-    if (state.idleAction) setWeight(state.idleAction, w);
-  });
-  folderWeights.add(s, "modify walk weight", 0.0, 1.0, 0.01).listen().onChange((w) => {
-    if (state.walkAction) setWeight(state.walkAction, w);
-  });
-  folderWeights.add(s, "modify run weight", 0.0, 1.0, 0.01).listen().onChange((w) => {
-    if (state.runAction) setWeight(state.runAction, w);
-  });
+  folderWeights
+    .add(s, "modify idle weight", 0.0, 1.0, 0.01)
+    .listen()
+    .onChange((w) => {
+      if (state.idleAction) setWeight(state.idleAction, w);
+    });
+  folderWeights
+    .add(s, "modify walk weight", 0.0, 1.0, 0.01)
+    .listen()
+    .onChange((w) => {
+      if (state.walkAction) setWeight(state.walkAction, w);
+    });
+  folderWeights
+    .add(s, "modify run weight", 0.0, 1.0, 0.01)
+    .listen()
+    .onChange((w) => {
+      if (state.runAction) setWeight(state.runAction, w);
+    });
 }
