@@ -11,38 +11,20 @@ import {
   checkClipAgainstBones,
   filterTracksToBones,
   makeClipAdditiveVsReference,
-  retargetHipsRotation,
 } from './loader.js';
 
-// ─── ĐỔI CHARACTER TẠI ĐÂY ────────────────────────────────────────────────────
-// 1. Đặt file GLB vào models/gltf/
-// 2. Đổi AVATAR_MODEL_PATH
-// 3. Reload trang → console log "[animations]" liệt kê tên + index tất cả clip
-// 4. Cập nhật ANIMATION_INDEX theo index đúng từ log
-const AVATAR_MODEL_PATH = "models/gltf/character.glb";
-
+const AVATAR_MODEL_PATH = "models/gltf/Soldier.glb";
+const WAVE_ACTION_MODEL_PATH = "models/gltf/wave.glb";
 const BASIS_TRANSCODER_PATH = "./node_modules/three/examples/jsm/libs/basis/";
 const ANIMATION_INDEX = {
-  // [2] 1.07s ≈ idle breathing, [3] 0.77s ≈ walk cycle
-  // Cập nhật nếu sau khi xem log [animations] thấy index khác
-  idle: 2,
+  idle: 0,
+  run: 1,
   walk: 3,
-  run:  3,
 };
-// ──────────────────────────────────────────────────────────────────────────────
 
-/** Preset drop-bone cho từng kiểu gesture.
- * - `upperBody`: vai/tay/đầu/cổ + Spine2 trở lên. Drop Hips (forward flip),
- *   Spine/Spine1 (cột sống dưới), nguyên chuỗi chân → đứng yên + idle drive.
- * - `fullBody`: drop Hips.position (root motion) qua cờ riêng — KHÔNG drop
- *   bone nào theo regex. Forward axis được fix bằng `retargetHipsRotation`
- *   trong `setupGestureActions` → cả chuỗi `Hips → UpLeg → Leg → Foot → Toe`
- *   áp đúng pose, chân nhảy đầy đủ theo clip. */
 const GESTURE_DROP_PRESETS = {
   upperBody: /(Hips|Spine$|Spine1$|Leg|Foot|Toe)/i,
-  // fullBody: không dùng dropBonePattern — giữ TẤT CẢ track (chỉ drop scale + Hips.position).
-  // Dùng /(?!)/ thay null để tránh bug `null ?? upperBody` của toán tử ??.
-  fullBody: /(?!)/,
+  fullBody: /(Hips|UpLeg)/i,
 };
 
 const state = {
@@ -97,7 +79,7 @@ export function initAnimation() {
   setupTimer();
   setupLights();
   setupGround();
-  setupLoader().catch((err) => console.error("[setupLoader] failed:", err));
+  setupLoader();
 
   window.addEventListener("resize", handleResize);
 }
@@ -183,93 +165,47 @@ function setupGround() {
   state.scene.add(ground);
 }
 
-/** Pipeline 5 bước biến `rawClip` (Mixamo) thành AnimationAction additive trên
- * mixer Soldier. Xem `docs/animation_gesture_overlay.md` §4 để hiểu chi tiết. */
 function setupGestureActions(rawClip, label, refClip, preset, modelRoot) {
-  if (!rawClip) {
-    console.warn(`[gesture] "${label}": không có clip`);
-    return null;
-  }
-
-  const dropPattern = GESTURE_DROP_PRESETS[preset] ?? GESTURE_DROP_PRESETS.upperBody;
-  // Sanity: log để xác nhận preset + pattern mỗi lần register
-  console.log(`[gesture] "${label}" preset=${preset} dropPattern=${dropPattern}`);
   const boneNames = collectBoneNames(modelRoot);
 
-  // Bước 3: log mismatch để debug
   checkClipAgainstBones(rawClip, boneNames, { label: `gesture: ${label}` });
 
-  // Bước 4: lọc track về đúng bone Soldier + drop theo preset
   const filtered = filterTracksToBones(rawClip, modelRoot, {
     dropScale: true,
     dropRoot: false,
     dropRootPosition: true,
-    dropBonePattern: dropPattern,
+    dropBonePattern: GESTURE_DROP_PRESETS[preset],
   });
-  if (filtered.tracks.length === 0) {
-    console.warn(`[gesture] "${label}": clip rỗng sau khi lọc`);
-    return null;
-  }
 
-  /** upperBody (wave):
-   *   - `makeClipAdditiveVsReference` → delta so với idle, blend ADDITIVE, idle = 1.
-   *   - Overlay tay/vai lên idle đang chạy. Không ảnh hưởng phần idle drive Hips/chân.
-   *
-   * fullBody (hiphop):
-   *   - Soldier.glb VÀ wave_hiphop.glb đều là Mixamo rig → bone local frames GIỐNG nhau.
-   *     Không cần retargetHipsRotation (áp offset sai làm Hips lệch cả clip → chân cứng).
-   *   - Clip áp thẳng ở blend NORMAL, idle weight = 0 → clip ghi đè toàn skeleton.
-   *   - Chỉ drop Hips.position để character đứng tại chỗ (không trượt sàn). */
-  const useAdditive = preset !== "fullBody";
-  const finalClip = useAdditive
-    ? makeClipAdditiveVsReference(filtered, refClip, 30)
-    : filtered;
-  finalClip.name = label;
+  // Bước 5: additive vs idle frame 0
+  const additiveClip = makeClipAdditiveVsReference(filtered, refClip, 30);
+  additiveClip.name = label;
 
-  const action = state.mixer.clipAction(finalClip);
-  action.blendMode = useAdditive
-    ? THREE.AdditiveAnimationBlendMode
-    : THREE.NormalAnimationBlendMode;
-  action.setLoop(THREE.LoopOnce, 1);
+  // Tạo action
+  const action = state.mixer.clipAction(additiveClip);
+  action.blendMode = THREE.AdditiveAnimationBlendMode;
+  action.loop = THREE.LoopOnce;
   action.clampWhenFinished = false;
-  action.enabled = true;
   setWeight(action, 0);
-  action.play(); // pre-play ở weight 0 → fadeIn lúc trigger
+  action.play(); // pre-play ở weight 0
 
   state.gestureActions[label] = action;
-
-  // Log số track chân còn lại để xác nhận không bị drop
-  const legTracks = finalClip.tracks.filter((t) => /Leg|Foot|Toe/i.test(t.name));
-  console.log(
-    `[gesture] registered: "${label}" preset=${preset} blend=${useAdditive ? "additive" : "normal"}` +
-    ` tracks=${finalClip.tracks.length} (loại ${filtered.dropped}) duration=${finalClip.duration.toFixed(2)}s` +
-    ` legTracks=${legTracks.length}`
-  );
-  return action;
+  console.log(`[gesture] registered: ${label} (preset: ${preset})`);
 }
 
 function playGesture(name) {
-  if (state.activeGesture) {
-    console.log(`[gesture] đang chạy "${state.activeGesture}", bỏ "${name}"`);
-    return;
-  }
+  // Tránh chồng gesture
+  if (state.activeGesture) return;
 
-  // Resolve action: imported (state.gestureActions) > procedural fallback (chỉ "wave")
-  const action =
-    state.gestureActions[name] ?? (name === "wave" ? state.waveAction : null);
+  const action = state.gestureActions[name] ?? null;
   if (!action) {
     console.warn(`[playGesture] không tìm thấy gesture: "${name}"`);
     return;
   }
 
   const isAdditive = action.blendMode === THREE.AdditiveAnimationBlendMode;
-  console.log(
-    `[playGesture] "${name}" blendMode=${action.blendMode} isAdditive=${isAdditive}` +
-    ` clip.tracks=${action.getClip().tracks.length}`
-  );
 
-  // Additive (upperBody): idle = 1 làm base, gesture cộng delta lên.
-  // Normal (fullBody): idle = 0, gesture ghi đè toàn skeleton.
+  // Tắt walk/run, giữ idle làm base khi additive
   setWeight(state.walkAction, 0);
   setWeight(state.runAction, 0);
   setWeight(state.idleAction, isAdditive ? 1 : 0);
@@ -295,106 +231,51 @@ function playGesture(name) {
 }
 
 
-async function setupLoader() {
+function setupLoader() {
   const ktx2Loader = new KTX2Loader();
   ktx2Loader.setTranscoderPath(BASIS_TRANSCODER_PATH).detectSupport(state.renderer);
 
   const loader = new GLTFLoader();
   loader.setKTX2Loader(ktx2Loader).setMeshoptDecoder(MeshoptDecoder);
 
-  // 1. Load Soldier
-  const gltf = await loader.loadAsync(AVATAR_MODEL_PATH);
-  state.model = gltf.scene;
-  state.scene.add(state.model);
+  loader.load(AVATAR_MODEL_PATH, (gltf) => {
+    state.model = gltf.scene;
+    state.scene.add(state.model);
 
-  state.model.traverse((object) => {
-    if (!object.isMesh) return;
-    object.castShadow = true;
-    object.receiveShadow = true;
+    state.model.traverse((object) => {
+      if (!object.isMesh) return;
+      object.castShadow = true;
+      object.receiveShadow = true;
+    });
+
+    // Skeleton helper
+    state.skeleton = new THREE.SkeletonHelper(state.model);
+    state.skeleton.visible = false;
+    state.scene.add(state.skeleton);
+
+    state.mixer = new THREE.AnimationMixer(state.model);
+
+    createPanel();
+
+    const animations = gltf.animations;
+    state.idleAction = state.mixer.clipAction(animations[ANIMATION_INDEX.idle]);
+    state.walkAction = state.mixer.clipAction(animations[ANIMATION_INDEX.walk]);
+    state.runAction = state.mixer.clipAction(animations[ANIMATION_INDEX.run]);
+
+    state.actions = [state.idleAction, state.walkAction, state.runAction];
+    state.waveAction = createWaveAction(state.mixer, state.model);
+
+    state.boneAxes = [
+      attachBoneAxes(state.model, "RightArm", 0.25),
+      attachBoneAxes(state.model, "RightForeArm", 0.2),
+      attachBoneAxes(state.model, "RightHand", 0.15),
+    ].filter(Boolean);
+    state.boneAxes.forEach((a) => (a.visible = false));
+
+    activateAllActions();
+
+    state.renderer.setAnimationLoop(animate);
   });
-
-  // 2. Skeleton helper
-  state.skeleton = new THREE.SkeletonHelper(state.model);
-  state.skeleton.visible = false;
-  state.scene.add(state.skeleton);
-
-  // 3. Mixer + locomotion clips của Soldier
-  state.mixer = new THREE.AnimationMixer(state.model);
-
-  const animations = gltf.animations;
-
-  // Log tất cả animation để xác nhận index khi đổi character
-  console.log(
-    "[animations]",
-    animations.map((a, i) => `[${i}] "${a.name}" ${a.duration.toFixed(2)}s`)
-  );
-
-  const rawIdle = animations[ANIMATION_INDEX.idle];
-  const rawWalk = animations[ANIMATION_INDEX.walk];
-  const rawRun  = animations[ANIMATION_INDEX.run];
-
-  if (!rawIdle) {
-    console.error("[animation] idleClip không tìm thấy — kiểm tra ANIMATION_INDEX.idle");
-    return;
-  }
-
-  // Remap bone names về mixamorig8:* (skeleton thật drive mesh).
-  // Cần thiết khi GLB được export từ Blender với nhiều armature (mixamorig: vs mixamorig8:).
-  const remapClip = (raw, label) => {
-    if (!raw) return null;
-    const clip = filterTracksToBones(raw, state.model, { dropScale: false, dropRootPosition: false });
-    clip.name = label;
-    console.log(`[animation] "${label}" remapped: ${clip.tracks.length}/${raw.tracks.length} tracks`);
-    return clip;
-  };
-
-  const idleClip = remapClip(rawIdle, "idle");
-  const walkClip = remapClip(rawWalk, "walk") ?? idleClip;
-  const runClip  = remapClip(rawRun,  "run")  ?? walkClip;
-
-  state.idleAction = state.mixer.clipAction(idleClip);
-  state.walkAction = state.mixer.clipAction(walkClip);
-  state.runAction  = state.mixer.clipAction(runClip);
-  state.actions = [state.idleAction, state.walkAction, state.runAction];
-
-  // 4. Procedural wave (fallback nếu wave.glb load fail)
-  state.waveAction = createWaveAction(state.mixer, state.model);
-
-  // 5. AxesHelper trên vài bone debug
-  state.boneAxes = [
-    attachBoneAxes(state.model, "RightArm", 0.25),
-    attachBoneAxes(state.model, "RightForeArm", 0.2),
-    attachBoneAxes(state.model, "RightHand", 0.15),
-  ].filter(Boolean);
-  state.boneAxes.forEach((a) => (a.visible = false));
-
-  // 6. GUI panel + locomotion warm-up
-  createPanel();
-  activateAllActions();
-
-  // 7. Bật render loop ngay — đừng chờ gesture clip mới render được
-  state.renderer.setAnimationLoop(animate);
-
-  // 8. Load gesture clips ngoài, register qua pipeline 5 bước.
-  //    Soldier vẫn locomotion bình thường nếu gesture load chậm/lỗi.
-  try {
-    const gestureClips = await loadModel();
-
-    if (gestureClips.wave) {
-      setupGestureActions(gestureClips.wave, "wave", idleClip, "upperBody", state.model);
-    }
-    if (gestureClips.wave_hiphop) {
-      setupGestureActions(
-        gestureClips.wave_hiphop,
-        "wave_hiphop",
-        idleClip,
-        "fullBody",
-        state.model
-      );
-    }
-  } catch (err) {
-    console.warn("[gesture] load failed, dùng procedural wave:", err);
-  }
 }
 
 function setWeight(action, weight) {
@@ -470,8 +351,7 @@ function createPanel() {
     "modify walk weight": 1.0,
     "modify run weight": 0.0,
     "modify time scale": 1.0,
-    "wave": () => playGesture("wave"),
-    "wave_hiphop": () => playGesture("wave_hiphop"),
+    "wave": startWave,
   };
 
   const settings = state.settings;
@@ -497,7 +377,6 @@ function createPanel() {
     .onChange(modifyTimeScale);
 
   folderGestures.add(settings, "wave");
-  folderGestures.add(settings, "wave_hiphop");
 
   openPanelFolders([
     folderVisibility,
@@ -640,3 +519,36 @@ function modifyTimeScale(speed) {
   state.mixer.timeScale = speed;
 }
 
+// ================== Arm ==================
+
+function startWave() {
+  if (!state.waveAction || !state.idleAction) return;
+  if (state.isWaving) return;
+
+  console.log("wave", state.waveAction);
+
+  setWeight(state.idleAction, 1);
+  setWeight(state.walkAction, 0);
+  setWeight(state.runAction, 0);
+
+  state.isWaving = true;
+
+  if (state.onWaveFinished) {
+    state.mixer.removeEventListener("finished", state.onWaveFinished);
+    state.onWaveFinished = null;
+  }
+
+  state.waveAction.reset().fadeIn(0.3).play();
+
+  state.onWaveFinished = (e) => {
+    if (e.action !== state.waveAction) return;
+
+    state.mixer.removeEventListener("finished", state.onWaveFinished);
+    state.onWaveFinished = null;
+
+    state.waveAction.fadeOut(0.3);
+    state.isWaving = false;
+  };
+
+  state.mixer.addEventListener("finished", state.onWaveFinished);
+}
