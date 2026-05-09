@@ -1,5 +1,11 @@
 # Character Controller — Master Loop & Data Flow
 
+> Module trung tâm gọi từng body-part controller theo đúng thứ tự mỗi frame; nhận input từ `trackingState`, output bone rotation + morph target.
+
+**When to read**: Phase 5 — viết `character_controller.js`. Hoặc cần biết update order, sub-state nào ai quản lý.
+
+---
+
 ## Tổng quan
 
 `CharacterController` là module trung tâm kết nối tất cả hệ thống:
@@ -495,6 +501,10 @@ animate();
 |--------|-------------|-----------|
 | dt spike (lag frame) | Tab bị ẩn, resume | Clamp `dt = Math.min(dt, 0.05)` |
 | Bones không update | updateWorldMatrix chưa chạy | Three.js tự cập nhật trong render, không cần gọi thủ công |
-| IK lật tay/chân | Thiếu pole vector | Luôn set poleTarget hợp lý (xem arm.md/leg.md) |
-| Morph targets không hoạt động | morphMesh sai | Dùng `findMorphMesh()` từ model_setup.md |
+| IK lật tay/chân | Thiếu pole vector | Luôn set poleTarget hợp lý (xem [../03-body-parts/arm.md](../03-body-parts/arm.md), [../03-body-parts/leg.md](../03-body-parts/leg.md)) |
+| Morph targets không hoạt động | morphMesh sai | Dùng `findMorphMesh()` từ [model-setup.md](model-setup.md) |
 | Arm/leg không theo tracking | worldScale sai | Kiểm tra lại `computeWorldScale()` |
+
+---
+
+← Prev: [animation-retargeting.md](animation-retargeting.md) | **Up**: [README](../README.md) | Next: [../03-body-parts/head-neck.md →](../03-body-parts/head-neck.md)

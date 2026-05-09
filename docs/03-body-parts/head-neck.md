@@ -1,5 +1,11 @@
 # Head & Neck — Chuyển động đầu và cổ
 
+> Phân phối rotation Head 65% / Neck 35%, spring damper cho cổ trễ nhẹ (follow-through), idle micro-movement, head bob theo thở, joint clamp.
+
+**When to read**: Phase 2 — refactor `head_neck_controller.js` từ `face_mesh.js`. Hoặc fix cổ rung / lệch / xoay ngược.
+
+---
+
 ## Object definition
 
 ```js
@@ -231,3 +237,7 @@ function updateHeadNeck(dt) {
 | Cổ không chuyển động | Quên áp rotation vào neck bone | Nhớ set cả `neck.rotation` |
 | Gimbal lock khi roll + yaw lớn | Dùng Euler order sai | Dùng `"YXZ"` cho head (yaw trước, pitch sau) |
 | Xoay ngược hướng | Camera selfie mirror | Negate yaw: `finalYaw = -rawYaw` |
+
+---
+
+← Prev: [../02-rig/character-controller.md](../02-rig/character-controller.md) | **Up**: [README](../README.md) | Next: [spine.md →](spine.md)

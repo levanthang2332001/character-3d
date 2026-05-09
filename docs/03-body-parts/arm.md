@@ -1,5 +1,11 @@
 # Arm — Cánh tay (Shoulder → Elbow → Wrist)
 
+> Two-bone IK (Law of Cosines) + pole vector cho khuỷu tay, shoulder droop, forearm twist, joint constraints, idle target khi không có Pose tracking.
+
+**When to read**: Phase 3 — viết `arm_controller.js`. Hoặc fix khuỷu tay lật / không tới đích / rung.
+
+---
+
 ## Object definition
 
 ```js
@@ -281,3 +287,7 @@ hand.rotation.y     += twistAngle × WRIST_TWIST_RATIO;
 | Vai không chuyển động | Quên shoulder droop | Áp `droop` vào `shoulder.rotation.z` |
 | Khuỷu chui vào thân | Pole vector sai | Pole phải nằm **phía trước** và **ngoài** cơ thể |
 | Forearm twist sai | Quên phân phối | Dùng tỉ lệ 60/40 giữa lowerArm và wrist |
+
+---
+
+← Prev: [spine.md](spine.md) | **Up**: [README](../README.md) | Next: [hand.md →](hand.md)

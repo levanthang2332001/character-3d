@@ -1,5 +1,11 @@
 # Leg & Foot — Chân và bàn chân
 
+> Two-bone IK (giống arm), pole vector hướng ra trước, ground raycast snap, foot alignment theo ground normal, heel-to-toe roll, knee hyperextend prevention, hip sway khi đi.
+
+**When to read**: Phase 4 — viết `leg_controller.js`. Hoặc fix chân nổi / xuyên sàn / đầu gối hyperextend.
+
+---
+
 ## Object definition
 
 ```js
@@ -324,3 +330,7 @@ function getLegIKTargetsFromPose(poseLandmarks, worldScale) {
 | Đầu gối hướng vào trong | Pole vector sai | Pole phải ra phía trước và hơi ra ngoài |
 | Hip lắc quá mạnh | `HIP_SWAY_AMP` quá lớn | Nhân thêm `intensityFactor` theo tốc độ |
 | Chân trượt (foot sliding) | Không lock foot khi grounded | Khi `isGrounded = true`, fix foot target, không update theo hip |
+
+---
+
+← Prev: [hand.md](hand.md) | **Up**: [README](../README.md) | Next: — (cuối)

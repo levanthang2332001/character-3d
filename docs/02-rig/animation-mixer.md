@@ -1,5 +1,11 @@
 # Animation System — Three.js Skeletal Animation & Blending
 
+> Pattern Three.js AnimationMixer + AnimationAction + clipAction + crossFade. Reference đang chạy: `script/animation/character.js`.
+
+**When to read**: thêm/đổi clip animation, blend giữa các state (idle/walk/run), fix "animation không chạy / giật".
+
+---
+
 Tài liệu này phân tích ví dụ chính thức của Three.js:
 [`webgl_animation_skinning_blending`](https://threejs.org/examples/#webgl_animation_skinning_blending)
 
@@ -557,3 +563,7 @@ THREE.AnimationMixer ──► clipAction() ──► THREE.AnimationAction
                                               .setEffectiveWeight(w)
                                               .getEffectiveWeight()
 ```
+
+---
+
+← Prev: [model-setup.md](model-setup.md) | **Up**: [README](../README.md) | Next: [animation-retargeting.md →](animation-retargeting.md)

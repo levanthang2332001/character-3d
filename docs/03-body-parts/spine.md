@@ -1,5 +1,11 @@
 # Spine — Cột sống
 
+> S-curve lean phân phối lên 4 bone, breathing 0.25Hz (ngực + bụng + vai), spine twist counter-rotate khi đầu quay, idle sway, height bob khi đi.
+
+**When to read**: Phase 2 — viết `spine_controller.js`. Hoặc cần thêm/sửa breathing, idle motion.
+
+---
+
 ## Object definition
 
 ```js
@@ -233,3 +239,7 @@ spine2.rotation.z -= lateralTilt × 0.5;  // counter-lean ngực ngược lại
 | Thở trông giả tạo | Chỉ animate ngực | Kết hợp cả belly + chest + shoulder |
 | Counter-rotate quên | Chỉ twist cùng chiều | Hips cần twist ngược: `× (-0.08)` |
 | Rotation accumulate | Cộng dồn mỗi frame | Set absolute rotation, không dùng `+=` với static pose |
+
+---
+
+← Prev: [head-neck.md](head-neck.md) | **Up**: [README](../README.md) | Next: [arm.md →](arm.md)

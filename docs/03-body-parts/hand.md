@@ -1,5 +1,11 @@
 # Hand & Fingers — Bàn tay và ngón tay
 
+> Tính curl/spread từ MediaPipe hand landmarks, áp lên bones (4 ngón + thumb opposition đặc biệt), preset poses, finger lag (secondary motion via spring damper), wrist rotation.
+
+**When to read**: Phase 3 — viết `hand_controller.js`. Hoặc thêm preset pose mới (peace, point, …).
+
+---
+
 ## Object definition
 
 ```js
@@ -325,3 +331,7 @@ const fingerLagCurl = THREE.MathUtils.clamp(wristVelocity.y × 0.15, -0.3, 0.3);
 | Ngón tay giật khi tracking | MediaPipe hand input noisy | Áp lerp 0.4, đừng dùng giá trị thô trực tiếp |
 | Preset không khớp model | Tên bone khác nhau | Check tên bone trong model GLTF, map lại nếu cần |
 | DIP curl bất thường | Quên giới hạn DIP < PIP | Đảm bảo `dip_angle ≤ pip_angle × 0.85` |
+
+---
+
+← Prev: [arm.md](arm.md) | **Up**: [README](../README.md) | Next: [leg.md →](leg.md)

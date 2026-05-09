@@ -1,18 +1,22 @@
-# MediaPipe Setup — Face + Pose + Hands
+# MediaPipe Setup — Face + Pose + Hand
 
-## Tổng quan
+> Setup 3 landmarker chạy đồng thời trên webcam, parse hand handedness (mirror correction), throttling khi performance thấp.
 
-HoloBox character cần 3 MediaPipe landmarker chạy đồng thời:
-
-| Landmarker | Model file | Output | Dùng cho |
-|-----------|-----------|--------|---------|
-| `FaceLandmarker` | `face_landmarker.task` | 478 landmarks + 52 blendshapes | Mặt, đầu, mắt, miệng |
-| `PoseLandmarker` | `pose_landmarker_lite.task` | 33 landmarks (world + normalized) | Thân, vai, hông, tay, chân |
-| `HandLandmarker` | `hand_landmarker.task` | 21 landmarks × 2 tay | Ngón tay |
+**When to read**: Phase 1 — trước khi viết `tracking_manager.js`. Hoặc khi cần thêm/sửa MediaPipe config.
 
 ---
 
-## 1. Import và CDN
+## Tổng quan
+
+| Landmarker | Model file | Output | Dùng cho |
+|-----------|-----------|--------|---------|
+| `FaceLandmarker` | `face_landmarker.task` | 478 landmark + 52 blendshape + 4×4 transform | Mặt, đầu, mắt, miệng |
+| `PoseLandmarker` | `pose_landmarker_lite.task` | 33 landmark (normalized + worldLandmarks) | Thân, vai, hông, tay, chân |
+| `HandLandmarker` | `hand_landmarker.task` | 21 landmark × ≤2 tay + handedness | Ngón tay |
+
+---
+
+## 1. Import + CDN
 
 ```js
 import {
@@ -28,9 +32,9 @@ import {
 ## 2. Khởi tạo FilesetResolver (dùng chung)
 
 ```js
-// Gọi một lần duy nhất, dùng cho tất cả landmarkers
+// Gọi 1 lần, dùng cho cả 3 landmarker
 const vision = await FilesetResolver.forVisionTasks(
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
 );
 ```
 
@@ -55,12 +59,13 @@ const faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
 });
 ```
 
-**Output của mỗi frame:**
+Output mỗi frame:
+
 ```js
 const faceResult = faceLandmarker.detectForVideo(video, timestamp);
-// faceResult.faceLandmarks[0]        → Array<{x,y,z}> 478 điểm
-// faceResult.faceBlendshapes[0].categories → Array<{categoryName, score}>
-// faceResult.facialTransformationMatrixes[0] → Float32Array 4x4
+// faceResult.faceLandmarks[0]                  → Array<{x,y,z}> 478 điểm
+// faceResult.faceBlendshapes[0].categories     → Array<{categoryName, score}>
+// faceResult.facialTransformationMatrixes[0]   → Float32Array 4×4
 ```
 
 ---
@@ -79,20 +84,20 @@ const poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
   minPoseDetectionConfidence: 0.5,
   minPosePresenceConfidence: 0.5,
   minTrackingConfidence: 0.5,
-  outputSegmentationMasks: false,  // tắt để tiết kiệm GPU
+  outputSegmentationMasks: false,         // tắt để tiết kiệm GPU
 });
 ```
 
-**Output của mỗi frame:**
+Output:
+
 ```js
 const poseResult = poseLandmarker.detectForVideo(video, timestamp);
-// poseResult.landmarks[0]        → Array<{x,y,z,visibility}> 33 điểm — normalized [0,1]
-// poseResult.worldLandmarks[0]   → Array<{x,y,z,visibility}> 33 điểm — meters, gốc ở hips
+// poseResult.landmarks[0]      → 33 điểm normalized [0,1]
+// poseResult.worldLandmarks[0] → 33 điểm meters thực tế (gốc tại hips)
 ```
 
-> **Quan trọng**: Ưu tiên dùng `worldLandmarks` cho tính toán 3D — đơn vị là **meters** thực tế,
-> không phụ thuộc vào kích thước video frame. Chỉ dùng `landmarks` (normalized) khi cần biết
-> vị trí pixel trên màn hình.
+> **Quan trọng**: Ưu tiên `worldLandmarks` cho tính 3D — đơn vị mét, không phụ thuộc kích thước video.
+> Chỉ dùng `landmarks` (normalized) khi cần biết pixel trên màn hình.
 
 ---
 
@@ -113,57 +118,47 @@ const handLandmarker = await HandLandmarker.createFromOptions(vision, {
 });
 ```
 
-**Output của mỗi frame:**
+Output:
+
 ```js
 const handResult = handLandmarker.detectForVideo(video, timestamp);
-// handResult.landmarks[i]     → Array<{x,y,z}> 21 điểm — normalized
-// handResult.worldLandmarks[i]→ Array<{x,y,z}> 21 điểm — meters
-// handResult.handedness[i]    → [{categoryName: "Left"|"Right", score}]
+// handResult.landmarks[i]      → 21 điểm normalized
+// handResult.worldLandmarks[i] → 21 điểm meters
+// handResult.handedness[i]     → [{categoryName: "Left"|"Right", score}]
 ```
 
-> **Chú ý mirror**: Webcam selfie → MediaPipe nhận ảnh đã mirror →
-> `handedness` bị đảo: "Left" thực ra là tay phải của người dùng.
-> Cần swap: `if (handedness === "Left") → rightHand, else → leftHand`
+> ⚠️ **Mirror**: Webcam selfie → handedness bị **đảo**: `"Left"` thực ra là tay phải của user. Xem §9.
 
 ---
 
-## 6. Video Loop — Chạy 3 Landmarkers cùng nhau
+## 6. Video loop — Chạy 3 landmarker cùng nhau
 
 ```js
 let lastVideoTime = -1;
 
 function detectLoop() {
   requestAnimationFrame(detectLoop);
-
   if (!video || video.readyState < 2) return;
 
   const now = performance.now();
-
-  // Chỉ process khi có frame mới
-  if (video.currentTime === lastVideoTime) return;
+  if (video.currentTime === lastVideoTime) return;       // chỉ process khi có frame mới
   lastVideoTime = video.currentTime;
 
-  // Chạy cả 3 — đồng bộ (blocking) trong requestAnimationFrame
-  const faceResult = faceLandmarker.detectForVideo(video, now);
-  const poseResult = poseLandmarker.detectForVideo(video, now);
-  const handResult = handLandmarker.detectForVideo(video, now);
-
-  // Lưu vào state dùng chung
-  trackingState.face = faceResult;
-  trackingState.pose = poseResult;
-  trackingState.hand = handResult;
+  // Chạy cả 3 đồng bộ (blocking) trong rAF
+  trackingState.face = faceLandmarker.detectForVideo(video, now);
+  trackingState.pose = poseLandmarker.detectForVideo(video, now);
+  trackingState.hand = handLandmarker.detectForVideo(video, now);
 }
 ```
 
-> **Performance note**: Trên GPU trung bình (RTX 3060), cả 3 landmarkers ~8–15ms/frame.
-> Nếu lag, giảm về `pose_landmarker_lite` và tắt HandLandmarker khi tay không trong frame.
+> **Performance**: GPU trung bình (RTX 3060) cả 3 ~8–15ms/frame.
+> Lag → giảm về `pose_landmarker_lite`, tắt HandLandmarker khi tay không trong frame.
 
 ---
 
 ## 7. Throttling khi performance thấp
 
 ```js
-// Chạy Pose + Hand mỗi 2 frames thay vì mỗi frame
 let frameCount = 0;
 function detectLoop() {
   requestAnimationFrame(detectLoop);
@@ -173,10 +168,10 @@ function detectLoop() {
   if (video.currentTime === lastVideoTime) return;
   lastVideoTime = video.currentTime;
 
-  // Face luôn chạy mỗi frame (quan trọng nhất)
+  // Face quan trọng nhất → mỗi frame
   trackingState.face = faceLandmarker.detectForVideo(video, now);
 
-  // Pose + Hand chạy mỗi 2 frames
+  // Pose + Hand → mỗi 2 frame
   if (frameCount % 2 === 0) {
     trackingState.pose = poseLandmarker.detectForVideo(video, now);
     trackingState.hand = handLandmarker.detectForVideo(video, now);
@@ -186,24 +181,19 @@ function detectLoop() {
 
 ---
 
-## 8. TrackingState Object
+## 8. TrackingState object
 
 ```js
-// State dùng chung giữa MediaPipe và character controller
 const trackingState = {
-  // Face
-  face: null,     // FaceLandmarkerResult
+  // Raw results
+  face: null,
   faceDetected: false,
-
-  // Pose
-  pose: null,     // PoseLandmarkerResult
+  pose: null,
   poseDetected: false,
-
-  // Hands
-  hand: null,     // HandLandmarkerResult
+  hand: null,
   leftHandDetected: false,
   rightHandDetected: false,
-  leftHandLandmarks: null,   // Array<{x,y,z}> 21 points
+  leftHandLandmarks: null,                    // Array<{x,y,z}> 21 điểm
   rightHandLandmarks: null,
 
   // Processed (sau khi parse)
@@ -220,19 +210,18 @@ const trackingState = {
 
 ---
 
-## 9. Parse Hand Result (tách trái/phải)
+## 9. Parse Hand Result — tách trái/phải (mirror correction)
 
 ```js
 function parseHandResult(handResult, state) {
   state.leftHandDetected  = false;
   state.rightHandDetected = false;
-
   if (!handResult?.landmarks) return;
 
   for (let i = 0; i < handResult.landmarks.length; i++) {
     const handedness = handResult.handedness[i]?.[0]?.categoryName;
 
-    // Mirror correction: selfie camera → "Left" là tay PHẢI thực tế
+    // SWAP do mirror: "Left" của camera là tay PHẢI của user
     if (handedness === "Left") {
       state.rightHandLandmarks = handResult.worldLandmarks[i];
       state.rightHandDetected  = true;
@@ -246,19 +235,18 @@ function parseHandResult(handResult, state) {
 
 ---
 
-## 10. Confidence Check
+## 10. Confidence check
 
 ```js
 function isPoseLandmarkVisible(landmark, threshold = 0.6) {
   return landmark?.visibility >= threshold;
 }
 
-// Ví dụ khi lấy wrist target:
 const lWrist = poseResult.worldLandmarks[0]?.[15];
 if (isPoseLandmarkVisible(lWrist)) {
   // Dùng landmark
 } else {
-  // Fallback về idle target
+  // Fallback idle target
 }
 ```
 
@@ -268,8 +256,12 @@ if (isPoseLandmarkVisible(lWrist)) {
 
 | Vấn đề | Nguyên nhân | Giải pháp |
 |--------|-------------|-----------|
-| MediaPipe khởi tạo chậm (~1-2s) | Download WASM + model | Hiển thị loading screen, chờ Promise |
-| `detectForVideo` bị lỗi timestamp | Timestamp giảm hoặc bằng 0 | Luôn dùng `performance.now()` |
-| Hand bị đổi trái/phải | Selfie mirror | Swap dựa trên handedness như mục 9 |
-| Pose chỉ detect từ eo lên | Người đứng quá xa camera | Dùng full-body camera, hoặc dùng chế độ LITE |
-| GPU out of memory | Chạy cả 3 landmarkers cùng lúc | Tắt HandLandmarker khi không cần |
+| Khởi tạo chậm (~1–2s) | Download WASM + model | Hiển thị loading screen, đợi `Promise` |
+| `detectForVideo` ném lỗi timestamp | Timestamp giảm hoặc bằng 0 | Luôn `performance.now()` |
+| Hand đổi trái/phải | Selfie mirror | Swap dựa trên handedness (§9) |
+| Pose chỉ detect từ eo trở lên | Người quá gần camera | Lùi camera / dùng pose_landmarker_lite |
+| GPU OOM | Chạy cả 3 cùng lúc | Tắt HandLandmarker khi không cần |
+
+---
+
+← Prev: [../00-overview/plan.md](../00-overview/plan.md) | **Up**: [README](../README.md) | Next: [face-tracking.md →](face-tracking.md)
