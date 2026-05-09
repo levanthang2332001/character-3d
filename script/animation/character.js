@@ -5,11 +5,17 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import Stats from "three/addons/libs/stats.module.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import {
+  initArmGestureSystem,
+  playRightHandHello,
+  updateArmGestures,
+} from "./arm.js";
 
 const PATHS = {
   avatar: "models/remy/Character.glb",
   idle: "models/remy/Idle.glb",
   walk: "models/remy/Walk.glb",
+  punch: "models/remy/Punching.glb",
   runGlbOptional: "",
   ktx2Basis: "./node_modules/three/examples/jsm/libs/basis/",
 };
@@ -77,6 +83,7 @@ const state = {
 
   idleAction: null,
   walkAction: null,
+  punchAction: null,
   runAction: null,
 
   actions: null,
@@ -251,7 +258,7 @@ function isMixamoRootHipsPositionTrack(trackName) {
   return /(^|\.)(mixamorigHips|mixamorig:Hips)\.position$/i.test(trackName);
 }
 
-function buildClipsFromAssets(idleGltf, walkGltf, optionalRunGltf) {
+function buildClipsFromAssets(idleGltf, walkGltf, punchGltf, optionalRunGltf) {
   const idleClip = stripRootHipsMotion(
     clipWithFallbackName(idleGltf.animations[0], "Idle"),
   );
@@ -259,20 +266,22 @@ function buildClipsFromAssets(idleGltf, walkGltf, optionalRunGltf) {
     clipWithFallbackName(walkGltf.animations[0], "Walk"),
   );
 
+  const punchClip = stripRootHipsMotion(
+    clipWithFallbackName(punchGltf.animations[0], "Punch"),
+  );
+
   const runClip = optionalRunGltf?.animations?.[0]
     ? stripRootHipsMotion(
-        clipWithFallbackName(optionalRunGltf.animations[0], "Run"),
-      )
+      clipWithFallbackName(optionalRunGltf.animations[0], "Run"),
+    )
     : clipWithFallbackName(walkClip.clone(), "Run");
 
   state.runUsesWalkClip = !optionalRunGltf;
 
-  return { idleClip, walkClip, runClip };
+  return { idleClip, walkClip, punchClip, runClip };
 }
 
-// -----------------------------------------------------------------------------
 // Loader → character + mixer
-// -----------------------------------------------------------------------------
 
 function startAssetLoad() {
   const gltfLoader = createConfiguredGltfLoader();
@@ -283,33 +292,37 @@ function startAssetLoad() {
         gltfLoader.loadAsync(PATHS.avatar),
         gltfLoader.loadAsync(PATHS.idle),
         gltfLoader.loadAsync(PATHS.walk),
+        gltfLoader.loadAsync(PATHS.punch),
       ];
 
       if (PATHS.runGlbOptional) {
         loads.push(gltfLoader.loadAsync(PATHS.runGlbOptional));
       }
-
       const results = await Promise.all(loads);
       const characterGltf = results[0];
       const idleGltf = results[1];
       const walkGltf = results[2];
-      const optionalRunGltf = PATHS.runGlbOptional ? results[3] : null;
+      const punchGltf = results[3];
+      const optionalRunGltf = PATHS.runGlbOptional ? results[4] : null;
 
       mountCharacter(characterGltf.scene);
+      initArmGestureSystem(state.model);
 
       state.mixer = new THREE.AnimationMixer(state.model);
       createGuiPanel();
 
-      const { idleClip, walkClip, runClip } = buildClipsFromAssets(
+      const { idleClip, walkClip, punchClip, runClip } = buildClipsFromAssets(
         idleGltf,
         walkGltf,
+        punchGltf,
         optionalRunGltf,
       );
 
       state.idleAction = state.mixer.clipAction(idleClip);
       state.walkAction = state.mixer.clipAction(walkClip);
+      state.punchAction = state.mixer.clipAction(punchClip);
       state.runAction = state.mixer.clipAction(runClip);
-      state.actions = [state.idleAction, state.walkAction, state.runAction];
+      state.actions = [state.idleAction, state.walkAction, state.punchAction, state.runAction];
 
       activateAllActions();
       state.renderer.setAnimationLoop(renderFrame);
@@ -332,6 +345,7 @@ function mountCharacter(sceneRoot) {
   state.scene.add(state.skeleton);
 }
 
+
 // -----------------------------------------------------------------------------
 // Render loop
 // -----------------------------------------------------------------------------
@@ -347,8 +361,9 @@ function renderFrame() {
 
   const idleW = state.idleAction.getEffectiveWeight();
   const walkW = state.walkAction.getEffectiveWeight();
+  const punchW = state.punchAction.getEffectiveWeight();
   const runW = state.runAction.getEffectiveWeight();
-  syncGuiWeightSliders(idleW, walkW, runW);
+  syncGuiWeightSliders(idleW, walkW, punchW, runW);
 
   let delta = state.timer.getDelta();
   if (state.singleStepMode) {
@@ -357,6 +372,8 @@ function renderFrame() {
   }
 
   state.mixer.update(delta);
+
+  updateArmGestures(delta);
 
   if (state.runUsesWalkClip && state.runAction?.getEffectiveWeight() > 0) {
     state.runAction.setEffectiveTimeScale(RUN_SPEED_VS_WALK);
@@ -367,12 +384,13 @@ function renderFrame() {
   state.stats?.update();
 }
 
-function syncGuiWeightSliders(idleWeight, walkWeight, runWeight) {
+function syncGuiWeightSliders(idleWeight, walkWeight, punchWeight, runWeight) {
   const s = state.settings;
   if (!s) return;
   s["modify idle weight"] = idleWeight;
   s["modify walk weight"] = walkWeight;
   s["modify run weight"] = runWeight;
+  s["modify punch weight"] = punchWeight;
 }
 
 function onWindowResize() {
@@ -435,6 +453,7 @@ function activateAllActions() {
   setWeight(state.idleAction, state.settings["modify idle weight"]);
   setWeight(state.walkAction, state.settings["modify walk weight"]);
   setWeight(state.runAction, state.settings["modify run weight"]);
+  setWeight(state.punchAction, state.settings["modify punch weight"]);
   state.actions.forEach((a) => a.play());
 }
 
@@ -491,6 +510,7 @@ function createGuiPanel() {
     "show axes": true,
     "show ground plane": true,
     "show skeleton": false,
+    "wave right hand (H)": playRightHandHello,
     "deactivate all": deactivateAllActions,
     "activate all": activateAllActions,
     "pause/continue": pauseContinue,
@@ -512,11 +532,20 @@ function createGuiPanel() {
       if (!state.runAction || !state.walkAction) return;
       prepareCrossFade(state.runAction, state.walkAction, 5.0);
     },
+    "from walk to punch": () => {
+      if (!state.walkAction || !state.punchAction) return;
+      prepareCrossFade(state.walkAction, state.punchAction, 2.5);
+    },
+    "from punch to walk": () => {
+      if (!state.punchAction || !state.walkAction) return;
+      prepareCrossFade(state.punchAction, state.walkAction, 5.0);
+    },
     "use default duration": true,
     "set custom duration": 3.5,
     "modify idle weight": 0.0,
     "modify walk weight": 1.0,
     "modify run weight": 0.0,
+    "modify punch weight": 0.0,
     "modify time scale": 1.0,
   };
 
@@ -534,6 +563,7 @@ function createGuiPanel() {
   folderVisibility.add(s, "show skeleton").onChange((v) => {
     state.skeleton.visible = v;
   });
+  folderActivation.add(s, "wave right hand (H)");
 
   folderActivation.add(s, "deactivate all");
   folderActivation.add(s, "activate all");
@@ -546,6 +576,8 @@ function createGuiPanel() {
   folderCrossfading.add(s, "from idle to walk");
   folderCrossfading.add(s, "from walk to run");
   folderCrossfading.add(s, "from run to walk");
+  folderCrossfading.add(s, "from walk to punch");
+  folderCrossfading.add(s, "from punch to walk");
   folderCrossfading.add(s, "use default duration");
   folderCrossfading.add(s, "set custom duration", 0, 10, 0.01);
 
@@ -585,5 +617,11 @@ function bindWeightSliders(folderWeights) {
     .listen()
     .onChange((w) => {
       if (state.runAction) setWeight(state.runAction, w);
+    });
+  folderWeights
+    .add(s, "modify punch weight", 0.0, 1.0, 0.01)
+    .listen()
+    .onChange((w) => {
+      if (state.punchAction) setWeight(state.punchAction, w);
     });
 }
